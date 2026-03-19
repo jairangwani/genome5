@@ -154,32 +154,39 @@ def converge(project_dir: str, agent_manager):
                     def _run_one_debate(args):
                         dtask, downer, dctx = args
                         print(f"  DEBATE: {dtask.node_name or dtask.message[:40]}...")
-                        result = run_debate(
+                        result, converged = run_debate(
                             project_dir=project_dir,
                             topic=dtask.message,
                             context_files=dctx,
                             solver_instructions=dtask.suggestion or dtask.message,
-                            model=getattr(downer, "model", "claude-opus-4-6"),
+                            model="claude-opus-4-6",  # ALWAYS Opus, hardcoded
                             timeout=config.get("agent_timeout", 600),
                         )
-                        return dtask, downer, result
+                        return dtask, downer, result, converged
 
                     print(f"  Running {len(debate_batch)} debates in parallel...")
 
                     with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
                         futures = [pool.submit(_run_one_debate, args) for args in debate_batch]
                         for future in concurrent.futures.as_completed(futures):
-                            dtask, downer, debate_result = future.result()
-                            print(f"  Debate done for {dtask.node_name or '?'}: {len(debate_result)} chars")
+                            dtask, downer, debate_result, converged = future.result()
 
-                            # Check if debate created files
+                            if converged:
+                                print(f"  DEBATE CONVERGED for {dtask.node_name or '?'}: all 3 agreed.")
+                            else:
+                                print(f"  DEBATE DID NOT CONVERGE for {dtask.node_name or '?'}: will re-run next cycle.")
+                                # Don't create nodes from unconverged debate — task stays, debate re-runs
+                                continue
+
+                            # Only create nodes if debate CONVERGED (all 3 agreed)
                             debate_genome = load_genome(project_dir)
                             if len(debate_genome.nodes) == len(genome.nodes):
                                 print(f"  Debate text → passing to agent...")
                                 snapshot_mgr.snapshot()
                                 followup = Task(
-                                    f"The debate team produced this analysis. Create the "
-                                    f"nodes described:\n\n{debate_result[:3000]}",
+                                    f"The debate team CONVERGED on this analysis. All 3 agents agreed "
+                                    f"this is comprehensive. Create the nodes described:\n\n"
+                                    f"{debate_result[:3000]}",
                                     dtask.node_name, phase=dtask.phase, priority=dtask.priority,
                                     suggestion=dtask.suggestion,
                                 )

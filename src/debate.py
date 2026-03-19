@@ -174,11 +174,20 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
         print(f"  Debate hit MAX_ROUNDS ({MAX_ROUNDS}) without convergence.")
         _log(f"\n**RESULT: MAX ROUNDS ({MAX_ROUNDS}) reached. Did NOT converge.**\n")
 
-    # Return the solver's LAST response as the final answer
-    solver_responses = [e["content"] for e in debate_history if e["role"] == "SOLVER"]
-    total_rounds = len(debate_history)
-    _log(f"Total rounds: {total_rounds} | Solver responses: {len(solver_responses)}\n")
+    # Determine if debate converged
+    latest = {}
+    for entry in debate_history:
+        latest[entry["role"]] = entry["content"]
+    converged = all(
+        "CONVERGED" in latest.get(r, "")
+        for r in ["SOLVER", "BREAKER 1", "BREAKER 2"]
+        if r in latest
+    ) and len(debate_history) >= 4
 
-    if solver_responses:
-        return solver_responses[-1]
-    return "Debate produced no solver output."
+    total_rounds = len(debate_history)
+    _log(f"Total rounds: {total_rounds} | Converged: {converged}\n")
+
+    # Return (result, converged) tuple
+    solver_responses = [e["content"] for e in debate_history if e["role"] == "SOLVER"]
+    result = solver_responses[-1] if solver_responses else "Debate produced no solver output."
+    return result, converged

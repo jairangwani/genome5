@@ -11,6 +11,9 @@ import threading
 import queue
 import uuid
 
+# ALWAYS Opus. Never Sonnet. Hardcoded.
+DEFAULT_MODEL = "claude-opus-4-6"
+
 
 class AgentManager:
     def __init__(self, project_dir: str, task_timeout: int = 600):
@@ -89,7 +92,7 @@ class AgentManager:
             return {"success": False, "error": "No agent node provided"}
 
         name = agent_node.name
-        model = getattr(agent_node, "model", "claude-opus-4-6")
+        model = getattr(agent_node, "model", DEFAULT_MODEL)
         desc = getattr(agent_node, "description", "")
         prompt = self._build_prompt(task)
 
@@ -137,7 +140,7 @@ class AgentManager:
         if info and info.get("alive"):
             return info
 
-        model = getattr(agent_node, "model", "claude-opus-4-6")
+        model = getattr(agent_node, "model", DEFAULT_MODEL)
         desc = getattr(agent_node, "description", "")
 
         env = {**os.environ}
