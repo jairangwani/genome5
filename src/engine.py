@@ -174,11 +174,13 @@ def converge(project_dir: str, agent_manager):
                             if converged:
                                 print(f"  DEBATE CONVERGED for {dtask.node_name or '?'}: all 3 agreed.")
                                 # Update workflow node AND convergence status file
-                                workflow_nodes = [n for n in genome.all_nodes() if n.type == "workflow"]
+                                # Reload genome to get CURRENT persona count (debate may have created new ones)
+                                fresh_genome = load_genome(project_dir)
+                                workflow_nodes = [n for n in fresh_genome.all_nodes() if n.type == "workflow"]
                                 for wf in workflow_nodes:
                                     if dtask.check == "initial-personas" or dtask.check == "verify-personas":
                                         wf.persona_debate_converged = True
-                                        persona_count = len(genome.nodes_by_type("persona"))
+                                        persona_count = len(fresh_genome.nodes_by_type("persona"))
                                         wf.persona_count_at_convergence = persona_count
                                         if wf._source_file:
                                             _update_node_field(wf._source_file, "persona_debate_converged", "True")
