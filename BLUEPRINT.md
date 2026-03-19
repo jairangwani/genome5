@@ -14,10 +14,11 @@ A system where AI agents plan, build, test, and maintain ANY project. The engine
 
 1. **Everything is a node** — .py file with name, edges, validate()
 2. **Engine is dumb, nodes are smart** — engine just loads, validates, routes, loops
-3. **Use-case-first** — personas → use cases → journeys → services EMERGE
-4. **Debate team for exhaustive discovery** — 1 solver + 2 breakers, must all CONVERGE
-5. **Open system, no rigid gates** — new personas/UCs/services anytime
-6. **Wake-up on change** — new persona appears → debate re-opens
+3. **Clean state separation** — engine state in engine_state.yaml, node content in .py files. Engine NEVER edits .py files. Only agents write .py files.
+4. **Use-case-first** — personas → use cases → journeys → services EMERGE
+5. **Debate team for exhaustive discovery** — 1 solver + 2 breakers, persistent sessions, must all CONVERGE
+6. **Open system, no rigid gates** — new personas/UCs/services anytime
+7. **Wake-up on change** — new persona appears → debate re-opens
 7. **Ripple effect through nodes** — edges + staleness propagate changes automatically
 8. **Always Opus 4.6** — hardcoded, cannot be overridden
 9. **Experience teaches** — test failures create new nodes, system self-heals
@@ -118,10 +119,18 @@ while True:
 15. **Exhaustion lifecycle** — engine-enforced States 3+4 for expected_children nodes.
 16. **Debate convergence tracking** — saves to workflow node file on disk.
 
+### Engine State Management
+Engine stores ALL its state in `plan/engine_state.yaml`:
+- Debate convergence per check ID (converged: true/false, persona count, time)
+- Engine NEVER edits .py node files — only agents do
+- Planning workflow READS engine_state.yaml to check convergence
+- Clean separation: engine owns engine state, agents own node content
+
 ### What Engine Does NOT Do
 - No domain knowledge. Doesn't know what "persona" or "service" means.
 - No opinions. No verb lists, no type checks, no quality judgments.
 - No planning logic. All planning lives in node validate() methods.
+- No .py file editing. Engine reads .py files, never writes them.
 
 ---
 

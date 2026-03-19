@@ -14,14 +14,13 @@ import queue
 import uuid
 import datetime
 
-MAX_ROUNDS = 50
 DEFAULT_MODEL = "claude-opus-4-6"
 
 
 def run_debate(project_dir: str, topic: str, context_files: list[str],
                solver_instructions: str, breaker1_focus: str = "logical flaws",
                breaker2_focus: str = "practical gaps", model: str = DEFAULT_MODEL,
-               timeout: int = 300) -> tuple[str, bool]:
+               timeout: int = 300, max_rounds: int = 50) -> tuple[str, bool]:
     """Run a 1+2 debate with PERSISTENT sessions. Returns (result, converged)."""
 
     log_path = os.path.join(project_dir, "plan", "debate_log.md")
@@ -34,7 +33,7 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
 
     _log(f"\n{'='*60}")
     _log(f"## DEBATE [{debate_id}]: {topic_short}")
-    _log(f"Model: {model} | Max rounds: {MAX_ROUNDS} | Persistent sessions")
+    _log(f"Model: {model} | Max rounds: {max_rounds} | Persistent sessions")
     _log(f"{'='*60}\n")
 
     # Spawn 3 persistent sessions
@@ -50,7 +49,7 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
     role_converged = {"SOLVER": False, "BREAKER 1": False, "BREAKER 2": False}
     final_converged = False
 
-    for round_num in range(1, MAX_ROUNDS + 1):
+    for round_num in range(1, max_rounds + 1):
         if round_num % 3 == 1:
             role = "SOLVER"
             if round_num == 1:
@@ -90,7 +89,7 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
                 f"When genuinely done, end with CONVERGED on its own line."
             )
 
-        print(f"  Debate [{debate_id}] round {round_num}/{MAX_ROUNDS}: {role}...")
+        print(f"  Debate [{debate_id}] round {round_num}/{max_rounds}: {role}...")
         response = _send_to_persistent(agents[role], prompt, timeout)
 
         last_line = response.rstrip().split('\n')[-1].strip().rstrip('.,!;:')
@@ -108,7 +107,7 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
         if all(role_converged.values()) and round_num >= 4:
             final_converged = True
             print(f"  Debate [{debate_id}] ALL 3 CONVERGED after {round_num} rounds!")
-            _log(f"\n**RESULT: CONVERGED after {round_num}/{MAX_ROUNDS} rounds.**")
+            _log(f"\n**RESULT: CONVERGED after {round_num}/{max_rounds} rounds.**")
             _log(f"  SOLVER: converged={role_converged['SOLVER']}")
             _log(f"  BREAKER 1: converged={role_converged['BREAKER 1']}")
             _log(f"  BREAKER 2: converged={role_converged['BREAKER 2']}\n")
@@ -118,8 +117,8 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
             _log(f"  ({role} converged but waiting for others...)\n")
 
     if not final_converged:
-        print(f"  Debate [{debate_id}] hit MAX_ROUNDS ({MAX_ROUNDS}).")
-        _log(f"\n**RESULT: MAX ROUNDS ({MAX_ROUNDS}) reached. Did NOT converge.**")
+        print(f"  Debate [{debate_id}] hit max_rounds ({max_rounds}).")
+        _log(f"\n**RESULT: MAX ROUNDS ({max_rounds}) reached. Did NOT converge.**")
         _log(f"  SOLVER: converged={role_converged['SOLVER']}")
         _log(f"  BREAKER 1: converged={role_converged['BREAKER 1']}")
         _log(f"  BREAKER 2: converged={role_converged['BREAKER 2']}\n")

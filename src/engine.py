@@ -159,8 +159,8 @@ def converge(project_dir: str, agent_manager):
                             topic=dtask.message,
                             context_files=dctx,
                             solver_instructions=dtask.suggestion or dtask.message,
-                            model="claude-opus-4-6",  # ALWAYS Opus, hardcoded
                             timeout=config.get("agent_timeout", 600),
+                            max_rounds=config.get("max_debate_rounds", 50),
                         )
                         return dtask, downer, result, converged
 
@@ -173,32 +173,20 @@ def converge(project_dir: str, agent_manager):
 
                             if converged:
                                 print(f"  DEBATE CONVERGED for {dtask.node_name or '?'}: all 3 agreed.")
-                                # Update workflow node AND convergence status file
-                                # Reload genome to get CURRENT persona count (debate may have created new ones)
+                                # Write to engine_state.yaml — the ONLY place engine stores state
                                 fresh_genome = load_genome(project_dir)
-                                workflow_nodes = [n for n in fresh_genome.all_nodes() if n.type == "workflow"]
-                                for wf in workflow_nodes:
-                                    if dtask.check == "initial-personas" or dtask.check == "verify-personas":
-                                        wf.persona_debate_converged = True
-                                        persona_count = len(fresh_genome.nodes_by_type("persona"))
-                                        wf.persona_count_at_convergence = persona_count
-                                        if wf._source_file:
-                                            _update_node_field(wf._source_file, "persona_debate_converged", "True")
-                                            _update_node_field(wf._source_file, "persona_count_at_convergence", str(persona_count))
-                                    elif dtask.check and dtask.check.startswith("discover-usecases-"):
-                                        persona_name = dtask.node_name
-                                        if hasattr(wf, 'use_case_debates_converged'):
-                                            wf.use_case_debates_converged[persona_name] = True
-                                            if wf._source_file:
-                                                _update_node_field(wf._source_file, "use_case_debates_converged",
-                                                                  repr(wf.use_case_debates_converged))
-
-                                # Also write to convergence status file (easy to read)
-                                _write_convergence_status(project_dir, dtask, converged, genome)
+                                _save_engine_state(project_dir, dtask.check, {
+                                    "converged": True,
+                                    "personas": len(fresh_genome.nodes_by_type("persona")),
+                                    "use_cases": len(fresh_genome.nodes_by_type("use_case")),
+                                    "node": dtask.node_name or "",
+                                })
                             else:
                                 print(f"  DEBATE DID NOT CONVERGE for {dtask.node_name or '?'}: will re-run next cycle.")
-                                _write_convergence_status(project_dir, dtask, False, genome)
-                                # Don't create nodes from unconverged debate — task stays, debate re-runs
+                                _save_engine_state(project_dir, dtask.check, {
+                                    "converged": False,
+                                    "node": dtask.node_name or "",
+                                })
                                 continue
 
                             # Debate agents use persistent sessions and write files directly.
@@ -464,10 +452,11 @@ def _load_config(genome) -> dict:
         "stuck_threshold": 5,
         "max_reverts": 3,
         "agent_timeout": 600,
-        "max_parallel": 1,
+        "max_parallel": 2,
         "snapshot_interval": 10,
         "max_cycles": 5000,
         "max_hours": 24,
+        "max_debate_rounds": 50,
     }
     for node in genome.nodes_by_type("config"):
         for key in defaults:
@@ -496,57 +485,39 @@ def _write_issues(plan_dir, tasks):
         yaml.dump(data, f, default_flow_style=False)
 
 
-def _write_convergence_status(project_dir: str, task, converged: bool, genome):
-    """Write debate convergence status to plan/convergence.yaml — easy to monitor."""
+def _save_engine_state(project_dir: str, key: str, data: dict):
+    """Save engine state to plan/engine_state.yaml.
+
+    This is the ONLY place the engine stores its own state.
+    Engine NEVER edits .py files. Only agents write .py files.
+    """
     import datetime
-    status_path = os.path.join(project_dir, "plan", "convergence.yaml")
+    state_path = os.path.join(project_dir, "plan", "engine_state.yaml")
 
     existing = {}
-    if os.path.exists(status_path):
+    if os.path.exists(state_path):
         try:
-            with open(status_path, encoding="utf-8") as f:
+            with open(state_path, encoding="utf-8") as f:
                 existing = yaml.safe_load(f) or {}
         except Exception:
             existing = {}
 
-    key = task.check or task.message[:40]
-    existing[key] = {
-        "converged": converged,
-        "node": task.node_name,
-        "time": datetime.datetime.now().isoformat(),
-        "personas": len(genome.nodes_by_type("persona")),
-        "use_cases": len(genome.nodes_by_type("use_case")),
-    }
+    data["time"] = datetime.datetime.now().isoformat()
+    existing[key] = data
 
-    with open(status_path, "w", encoding="utf-8") as f:
+    with open(state_path, "w", encoding="utf-8") as f:
         yaml.dump(existing, f, default_flow_style=False)
 
-    status_word = "CONVERGED" if converged else "NOT CONVERGED"
-    print(f"  Convergence status written: {key} → {status_word}")
+    print(f"  Engine state: {key} → {data.get('converged', '?')}")
 
 
-def _update_node_field(filepath: str, field: str, value: str):
-    """Update a field in a node's .py file. Handles type annotations."""
+def _load_engine_state(project_dir: str) -> dict:
+    """Load engine state from plan/engine_state.yaml."""
+    state_path = os.path.join(project_dir, "plan", "engine_state.yaml")
+    if not os.path.exists(state_path):
+        return {}
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        import re
-        updated = False
-        for i, line in enumerate(lines):
-            stripped = line.lstrip()
-            # Match: field = value, field: type = value, field: type
-            if stripped.startswith(field + " =") or stripped.startswith(field + ":") or stripped.startswith(field + "="):
-                indent = line[:len(line) - len(stripped)]
-                lines[i] = f"{indent}{field} = {value}\n"
-                updated = True
-                break
-
-        if updated:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-            print(f"  Updated {field} = {value} in {os.path.basename(filepath)}")
-        else:
-            print(f"  Warning: field '{field}' not found in {os.path.basename(filepath)}")
-    except Exception as e:
-        print(f"  Warning: Could not update {field} in {filepath}: {e}")
+        with open(state_path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
