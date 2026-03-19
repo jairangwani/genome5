@@ -115,9 +115,11 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
         print(f"  Debate [{debate_id}] round {round_num}/{MAX_ROUNDS}: {role}...")
         response = call_agent(role, instructions, round_num)
 
-        # Check for CONVERGED as the LAST word or on its own line
-        # Not just anywhere in the text (could appear in quotes/context)
-        has_converged = response.rstrip().endswith("CONVERGED")
+        # Check for CONVERGED as the LAST meaningful word in the response.
+        # Must be at the END — not mid-sentence in context/quotes.
+        # Handle: "CONVERGED", "CONVERGED.", "CONVERGED\n", etc.
+        last_line = response.rstrip().split('\n')[-1].strip().rstrip('.,!;:')
+        has_converged = last_line == "CONVERGED"
         if has_converged:
             role_converged[role] = True
 
