@@ -81,38 +81,98 @@ class AgentManager:
             return None, None
 
     def assign_task_fresh(self, task: dict) -> dict:
-        """Run task in a FRESH agent session — new process, no prior context.
+        """Run task in a FRESH persistent session — new process, no prior context.
 
         Used for exhaustion State 3 (re-read spec) and State 4 (reviewer).
-        The fresh session ensures different LLM sampling paths.
+        Uses PERSISTENT session (NDJSON streaming) so agent CAN write files.
         Process is killed after the task completes.
         """
         agent_node = task.get("agent_node")
         if not agent_node:
             return {"success": False, "error": "No agent node provided"}
 
-        name = agent_node.name
-        model = DEFAULT_MODEL  # ALWAYS Opus. Agent node model field is ignored.
-        desc = getattr(agent_node, "description", "")
+        name = f"Fresh-{agent_node.name}-{uuid.uuid4().hex[:6]}"
         prompt = self._build_prompt(task)
 
-        # One-shot: spawn, send, receive, kill
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        # Spawn persistent session
+        env = {**os.environ}
         env.pop("CLAUDECODE", None)
         env.pop("CLAUDE_CODE_ENTRYPOINT", None)
 
+        system_prompt = (
+            f'You are a FRESH reviewer for "{agent_node.name}". '
+            f'No prior context. Read files, evaluate, write changes directly.'
+        )
+
+        args = [
+            "claude",
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--model", DEFAULT_MODEL,
+            "--dangerously-skip-permissions",
+            "--verbose",
+            "--system-prompt", system_prompt,
+        ]
+
         try:
-            result = subprocess.run(
-                ["claude", "--output-format", "text", "--model", model,
-                 "--dangerously-skip-permissions"],
-                input=prompt, capture_output=True, text=True,
-                timeout=self.task_timeout, cwd=self.project_dir,
-                env=env, encoding="utf-8", errors="replace",
+            proc = subprocess.Popen(
+                args, cwd=self.project_dir, env=env,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
-            if result.returncode == 0 and result.stdout.strip():
-                return {"success": True, "text": result.stdout.strip()}
-            return {"success": False, "error": result.stderr[:200] if result.stderr else "no output"}
-        except subprocess.TimeoutExpired:
+
+            # Send task via NDJSON
+            ndjson = json.dumps({
+                "type": "user",
+                "message": {"role": "user", "content": prompt},
+            })
+            proc.stdin.write((ndjson + "\n").encode())
+            proc.stdin.flush()
+
+            # Wait for result with timeout
+            result_q = queue.Queue()
+            def _reader():
+                try:
+                    while True:
+                        line = proc.stdout.readline()
+                        if not line:
+                            result_q.put({"type": "error", "error": "stdout closed"})
+                            return
+                        line = line.decode().strip()
+                        if not line:
+                            continue
+                        try:
+                            msg = json.loads(line)
+                            if msg.get("type") == "result":
+                                result_q.put({"type": "result", "msg": msg})
+                                return
+                        except json.JSONDecodeError:
+                            continue
+                except Exception as e:
+                    result_q.put({"type": "error", "error": str(e)})
+
+            threading.Thread(target=_reader, daemon=True).start()
+
+            item = result_q.get(timeout=self.task_timeout)
+
+            # Kill the fresh session after getting result
+            try:
+                if os.name == "nt":
+                    subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                                   capture_output=True, timeout=10)
+                else:
+                    proc.kill()
+            except Exception:
+                pass
+
+            if item["type"] == "result":
+                return {"success": True, "text": self._extract_text(item["msg"])}
+            return {"success": False, "error": item["error"]}
+
+        except queue.Empty:
+            try:
+                proc.kill()
+            except Exception:
+                pass
             return {"success": False, "error": f"Fresh session timed out after {self.task_timeout}s"}
         except Exception as e:
             return {"success": False, "error": str(e)[:200]}

@@ -199,25 +199,11 @@ def converge(project_dir: str, agent_manager):
                                 # Don't create nodes from unconverged debate — task stays, debate re-runs
                                 continue
 
-                            # Only create nodes if debate CONVERGED (all 3 agreed)
+                            # Debate agents use persistent sessions and write files directly.
+                            # No followup task needed — files are already on disk.
                             debate_genome = load_genome(project_dir)
-                            if len(debate_genome.nodes) == len(genome.nodes):
-                                print(f"  Debate text → passing to agent...")
-                                snapshot_mgr.snapshot()
-                                followup = Task(
-                                    f"The debate team CONVERGED on this analysis. All 3 agents agreed "
-                                    f"this is comprehensive. Create the nodes described:\n\n"
-                                    f"{debate_result[:3000]}",
-                                    dtask.node_name, phase=dtask.phase, priority=dtask.priority,
-                                    suggestion=dtask.suggestion,
-                                )
-                                agent_manager.assign_task({
-                                    "issue": followup,
-                                    "context_files": dctx,
-                                    "regression_history": reg_history,
-                                    "feedback": "",
-                                    "agent_node": downer,
-                                })
+                            new_nodes = len(debate_genome.nodes) - len(genome.nodes)
+                            print(f"  Debate created {new_nodes} new nodes directly.")
 
                     snapshot_mgr.checkpoint(f"genome5: {len(debate_batch)} parallel debates")
                     continue
