@@ -508,7 +508,7 @@ def _save_engine_state(project_dir: str, key: str, data: dict):
     with open(state_path, "w", encoding="utf-8") as f:
         yaml.dump(existing, f, default_flow_style=False)
 
-    print(f"  Engine state: {key} → {data.get('converged', '?')}")
+    print(f"  Engine state: {key} = {data.get('converged', '?')}")
 
 
 def _load_engine_state(project_dir: str) -> dict:
