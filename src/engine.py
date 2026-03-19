@@ -173,6 +173,21 @@ def converge(project_dir: str, agent_manager):
 
                             if converged:
                                 print(f"  DEBATE CONVERGED for {dtask.node_name or '?'}: all 3 agreed.")
+                                # Update workflow node to track convergence
+                                workflow_nodes = [n for n in genome.all_nodes() if n.type == "workflow"]
+                                for wf in workflow_nodes:
+                                    if dtask.check == "initial-personas" or dtask.check == "verify-personas":
+                                        wf.persona_debate_converged = True
+                                        # Write back to file
+                                        if wf._source_file:
+                                            _update_node_field(wf._source_file, "persona_debate_converged", "True")
+                                    elif dtask.check and dtask.check.startswith("discover-usecases-"):
+                                        persona_name = dtask.node_name
+                                        if hasattr(wf, 'use_case_debates_converged'):
+                                            wf.use_case_debates_converged[persona_name] = True
+                                            if wf._source_file:
+                                                _update_node_field(wf._source_file, "use_case_debates_converged",
+                                                                  repr(wf.use_case_debates_converged))
                             else:
                                 print(f"  DEBATE DID NOT CONVERGE for {dtask.node_name or '?'}: will re-run next cycle.")
                                 # Don't create nodes from unconverged debate — task stays, debate re-runs
@@ -485,3 +500,20 @@ def _write_issues(plan_dir, tasks):
              "node": t.node_name or None, "message": t.message} for t in tasks[:100]]
     with open(os.path.join(plan_dir, "issues.yaml"), "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False)
+
+
+def _update_node_field(filepath: str, field: str, value: str):
+    """Update a field in a node's .py file. Simple text replacement."""
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+        import re
+        # Match field = old_value and replace with field = new_value
+        pattern = rf'(\s+){field}\s*[:=].*'
+        replacement = rf'\1{field} = {value}'
+        new_content = re.sub(pattern, replacement, content, count=1)
+        if new_content != content:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(new_content)
+    except Exception as e:
+        print(f"  Warning: Could not update {field} in {filepath}: {e}")
