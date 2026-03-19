@@ -152,9 +152,15 @@ def _ensure_genome5_importable():
     sys.modules["genome5.seeds"] = seeds_mod
 
     seeds_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "seeds")
-    seed_classes_file = os.path.join(seeds_dir, "base_classes.py")
+    # Search for base_classes.py in any seed subdirectory
+    seed_classes_file = None
+    for subdir in ["complex-software", "simple-software", ""]:
+        candidate = os.path.join(seeds_dir, subdir, "base_classes.py") if subdir else os.path.join(seeds_dir, "base_classes.py")
+        if os.path.exists(candidate):
+            seed_classes_file = candidate
+            break
 
-    if os.path.exists(seed_classes_file):
+    if seed_classes_file:
         try:
             with open(seed_classes_file, "r", encoding="utf-8") as f:
                 source = f.read()

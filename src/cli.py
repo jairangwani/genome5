@@ -68,8 +68,9 @@ def main():
         ctx_path = os.path.join(plan_dir, "context.yaml")
         if not os.path.exists(ctx_path):
             import yaml
-            yaml.dump({"seed": seed, "description": "New genome5 project"},
-                      open(ctx_path, "w", encoding="utf-8"), default_flow_style=False)
+            with open(ctx_path, "w", encoding="utf-8") as f:
+                yaml.dump({"seed": seed, "description": "New genome5 project"},
+                          f, default_flow_style=False)
         print(f"  Created. Run: genome5 converge {project_dir}")
 
     elif command == "status":

@@ -100,7 +100,8 @@ class AgentManager:
 
         try:
             result = subprocess.run(
-                ["claude", "--output-format", "text", "--model", model],
+                ["claude", "--output-format", "text", "--model", model,
+                 "--dangerously-skip-permissions"],
                 input=prompt, capture_output=True, text=True,
                 timeout=self.task_timeout, cwd=self.project_dir,
                 env=env, encoding="utf-8", errors="replace",

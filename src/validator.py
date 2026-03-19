@@ -61,7 +61,7 @@ def _check_dangling_edges(genome: Genome) -> list[Task]:
 
     for node in genome.all_nodes():
         for etype, targets in node.edges.items():
-            if etype.startswith("_") or etype == "owned_by":
+            if etype.startswith("_"):
                 continue
             target_list = targets if isinstance(targets, list) else [targets]
             for t in target_list:

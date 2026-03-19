@@ -149,6 +149,7 @@ def converge(project_dir: str, agent_manager):
                     if len(debate_genome.nodes) == len(genome.nodes):
                         # No new nodes created — pass debate result to agent
                         print(f"  Debate produced text, not files. Passing to agent...")
+                        snapshot_mgr.snapshot()  # protect against regression
                         followup = Task(
                             f"The debate team produced this analysis. Create the "
                             f"nodes described:\n\n{debate_result[:3000]}",
@@ -162,6 +163,13 @@ def converge(project_dir: str, agent_manager):
                             "feedback": "",
                             "agent_node": owner,
                         })
+                        # Regression check on followup
+                        followup_genome, followup_issues = check(project_dir)
+                        regression = detect_regression(followup, list(issues), followup_issues)
+                        if regression:
+                            print(f"  REGRESSION from debate followup: {regression}")
+                            snapshot_mgr.restore()
+                            log_regression(followup_genome.plan_dir, followup, regression)
 
                     snapshot_mgr.checkpoint(f"genome5: debate on {task.node_name or 'project'}")
                     continue
@@ -392,7 +400,7 @@ def _seed_project(plan_dir: str):
 
     import shutil
     for fname in os.listdir(seed_dir):
-        if fname.endswith(".py") and not fname.startswith("_"):
+        if fname.endswith(".py") and not fname.startswith("_") and fname != "base_classes.py":
             src = os.path.join(seed_dir, fname)
             dst = os.path.join(plan_dir, fname)
             if not os.path.exists(dst):
