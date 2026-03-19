@@ -173,7 +173,7 @@ def converge(project_dir: str, agent_manager):
 
                             if converged:
                                 print(f"  DEBATE CONVERGED for {dtask.node_name or '?'}: all 3 agreed.")
-                                # Update workflow node to track convergence
+                                # Update workflow node AND convergence status file
                                 workflow_nodes = [n for n in genome.all_nodes() if n.type == "workflow"]
                                 for wf in workflow_nodes:
                                     if dtask.check == "initial-personas" or dtask.check == "verify-personas":
@@ -190,8 +190,12 @@ def converge(project_dir: str, agent_manager):
                                             if wf._source_file:
                                                 _update_node_field(wf._source_file, "use_case_debates_converged",
                                                                   repr(wf.use_case_debates_converged))
+
+                                # Also write to convergence status file (easy to read)
+                                _write_convergence_status(project_dir, dtask, converged, genome)
                             else:
                                 print(f"  DEBATE DID NOT CONVERGE for {dtask.node_name or '?'}: will re-run next cycle.")
+                                _write_convergence_status(project_dir, dtask, False, genome)
                                 # Don't create nodes from unconverged debate — task stays, debate re-runs
                                 continue
 
@@ -504,18 +508,57 @@ def _write_issues(plan_dir, tasks):
         yaml.dump(data, f, default_flow_style=False)
 
 
+def _write_convergence_status(project_dir: str, task, converged: bool, genome):
+    """Write debate convergence status to plan/convergence.yaml — easy to monitor."""
+    import datetime
+    status_path = os.path.join(project_dir, "plan", "convergence.yaml")
+
+    existing = {}
+    if os.path.exists(status_path):
+        try:
+            with open(status_path, encoding="utf-8") as f:
+                existing = yaml.safe_load(f) or {}
+        except Exception:
+            existing = {}
+
+    key = task.check or task.message[:40]
+    existing[key] = {
+        "converged": converged,
+        "node": task.node_name,
+        "time": datetime.datetime.now().isoformat(),
+        "personas": len(genome.nodes_by_type("persona")),
+        "use_cases": len(genome.nodes_by_type("use_case")),
+    }
+
+    with open(status_path, "w", encoding="utf-8") as f:
+        yaml.dump(existing, f, default_flow_style=False)
+
+    status_word = "CONVERGED" if converged else "NOT CONVERGED"
+    print(f"  Convergence status written: {key} → {status_word}")
+
+
 def _update_node_field(filepath: str, field: str, value: str):
-    """Update a field in a node's .py file. Simple text replacement."""
+    """Update a field in a node's .py file. Handles type annotations."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
-            content = f.read()
+            lines = f.readlines()
+
         import re
-        # Match field = old_value and replace with field = new_value
-        pattern = rf'(\s+){field}\s*[:=].*'
-        replacement = rf'\1{field} = {value}'
-        new_content = re.sub(pattern, replacement, content, count=1)
-        if new_content != content:
+        updated = False
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            # Match: field = value, field: type = value, field: type
+            if stripped.startswith(field + " =") or stripped.startswith(field + ":") or stripped.startswith(field + "="):
+                indent = line[:len(line) - len(stripped)]
+                lines[i] = f"{indent}{field} = {value}\n"
+                updated = True
+                break
+
+        if updated:
             with open(filepath, "w", encoding="utf-8") as f:
-                f.write(new_content)
+                f.writelines(lines)
+            print(f"  Updated {field} = {value} in {os.path.basename(filepath)}")
+        else:
+            print(f"  Warning: field '{field}' not found in {os.path.basename(filepath)}")
     except Exception as e:
         print(f"  Warning: Could not update {field} in {filepath}: {e}")
