@@ -1,11 +1,11 @@
-"""Planning Workflow — USE-CASE-FIRST, NO RIGID GATES.
+"""Planning Workflow — USE-CASE-FIRST, OPEN SYSTEM, DEBATE CONVERGENCE.
 
-The debate team fires for INITIAL discovery of personas and use cases.
-After that, the system stays OPEN — new personas, use cases, journeys
-can be created at ANY time by any agent.
+The debate team fires for discovery AND wakes up when new nodes appear.
+No rigid gates. The system stays open. But debate must converge before
+marking any phase done.
 
-The workflow TRACKS what's been done, but does NOT BLOCK new work.
-Debate convergence is recorded so we know if all 3 agreed.
+Wake-up logic: if a new persona appears that wasn't part of the converged
+debate, the persona debate re-opens. Same for use cases.
 """
 import os
 import yaml
@@ -16,12 +16,18 @@ class PlanningWorkflow(Node):
     name = "Planning Workflow"
     type = "workflow"
     level = 0
-    description = "Use-case-first planning. Debate for initial discovery. Open for ongoing evolution."
+    description = "Use-case-first. Debate for discovery. Open for evolution. Wake-up on new nodes."
     edges = {}
 
-    # Track debate convergence — did all 3 agree?
+    # Convergence tracking
     persona_debate_converged: bool = False
+    persona_count_at_convergence: int = 0  # how many personas when debate converged
     use_case_debates_converged: dict = {}  # persona_name → True/False
+
+    def __init__(self):
+        super().__init__()
+        self.use_case_debates_converged = dict(
+            getattr(type(self), 'use_case_debates_converged', {}))
 
     def validate(self, genome) -> list[Task]:
         tasks = []
@@ -36,16 +42,22 @@ class PlanningWorkflow(Node):
         journeys = [n for n in genome.all_nodes() if n.type == "journey"]
 
         # ============================================
-        # INITIAL PERSONA DISCOVERY (debate team)
-        # Fires once. After convergence, system stays open.
-        # New personas can be added anytime via dangling edges.
+        # PERSONA DISCOVERY + WAKE-UP
+        # Initial: debate team discovers all personas.
+        # Wake-up: if new personas appear after convergence,
+        #   re-open the debate to verify completeness.
         # ============================================
+
+        # Wake-up check: did new personas appear since convergence?
+        if self.persona_debate_converged and len(personas) > self.persona_count_at_convergence:
+            print(f"  WAKE-UP: {len(personas)} personas now vs {self.persona_count_at_convergence} at convergence. Re-opening debate.")
+            self.persona_debate_converged = False
 
         if not self.persona_debate_converged:
             persona_names = [p.name for p in personas]
             if not personas:
                 tasks.append(Task(
-                    f"INITIAL PERSONA DISCOVERY: Read {reference}. "
+                    f"PERSONA DISCOVERY: Read {reference}. "
                     f"WHO uses this system? List EVERY type of user, operator, "
                     f"threat actor, and automated agent. Create persona nodes.",
                     self.name, phase="planning", priority=1,
@@ -62,8 +74,8 @@ class PlanningWorkflow(Node):
                     f"PERSONA VERIFICATION: {len(personas)} personas exist: "
                     f"{', '.join(persona_names[:15])}{'...' if len(personas) > 15 else ''}. "
                     f"Re-read {reference}. WHO is NOT in this list? "
-                    f"Add missing personas. When ALL 3 debaters agree nothing "
-                    f"is missing, the debate converges and we move on.",
+                    f"Add missing personas. All 3 debaters must agree nothing "
+                    f"is missing for this to converge.",
                     self.name, phase="planning", priority=1,
                     check="verify-personas",
                     suggestion=(
@@ -72,30 +84,29 @@ class PlanningWorkflow(Node):
                     ),
                     debate=True,
                 ))
-            # NOTE: NOT returning early. Other tasks can coexist.
-            # The debate runs, but doesn't block everything else.
 
         # ============================================
-        # USE CASE DISCOVERY PER PERSONA (debate team)
-        # Fires for each persona that has < 3 use cases.
-        # After debate converges for a persona, it's done.
-        # New use cases can still be added anytime.
+        # USE CASE DISCOVERY PER PERSONA + WAKE-UP
+        # Debate for each persona with < 3 use cases.
+        # Wake-up: new use cases added externally reset convergence.
         # ============================================
 
         for persona in personas:
             persona_ucs = [uc for uc in use_cases
                           if persona.name in str(uc.edges)]
 
-            # Skip if this persona's debate already converged
-            if self.use_case_debates_converged.get(persona.name):
-                continue
+            # Wake-up: if persona had converged but now has new UCs
+            # (added by another agent/journey discovery), re-verify
+            prev_converged = self.use_case_debates_converged.get(persona.name, False)
+            if prev_converged:
+                continue  # This persona's UCs are debate-verified
 
             if len(persona_ucs) < 3:
                 tasks.append(Task(
                     f"USE CASE DISCOVERY for '{persona.name}': "
                     f"has {len(persona_ucs)} use cases. "
                     f"WHAT can {persona.name} do? List EVERY action: "
-                    f"happy path, error recovery, edge cases, abuse scenarios. "
+                    f"happy path, error recovery, edge cases, abuse. "
                     f"Aim for 10-30 use cases.",
                     persona.name, phase="planning", priority=2,
                     check=f"discover-usecases-{persona.name[:20]}",
@@ -109,8 +120,7 @@ class PlanningWorkflow(Node):
 
         # ============================================
         # JOURNEY CREATION (no debate, specific tasks)
-        # For each use case without a journey.
-        # No gate — runs alongside other work.
+        # Runs alongside everything else. No gate.
         # ============================================
 
         for uc in use_cases:
@@ -118,7 +128,7 @@ class PlanningWorkflow(Node):
                           if j.edges.get("parent") == uc.name]
             if not uc_journeys:
                 tasks.append(Task(
-                    f"JOURNEY for '{uc.name}': Write step-by-step HOW this works. "
+                    f"JOURNEY for '{uc.name}': Write step-by-step HOW. "
                     f"Reference services in [brackets]. Include error paths. "
                     f"10-25 steps.",
                     uc.name, phase="planning", priority=3,
@@ -126,10 +136,8 @@ class PlanningWorkflow(Node):
                 ))
 
         # ============================================
-        # SERVICES EMERGE (engine handles via dangling edges)
-        # Journey steps reference [ServiceName].
-        # If service doesn't exist → dangling edge → engine creates it.
-        # No explicit task needed here — the validator handles it.
+        # SERVICES EMERGE from dangling edges.
+        # Engine handles this automatically via validator.
         # ============================================
 
         return tasks

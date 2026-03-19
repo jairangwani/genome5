@@ -563,23 +563,45 @@ class ProjectConfig(Node):
 
 ---
 
+## OPEN SYSTEM — NO RIGID GATES
+
+The system has NO phase gates. All work can happen simultaneously:
+- New personas can be created ANYTIME (during journeys, dev, test)
+- New use cases can be added ANYTIME
+- Services emerge organically from journey [brackets]
+- The debate team fires for INITIAL exhaustive discovery
+- After convergence, system stays open for ongoing evolution
+
+WAKE-UP LOGIC: If new personas appear after the persona debate converged,
+the debate RE-OPENS to verify completeness. Same for use cases.
+The system tracks persona_count_at_convergence — if count grows, debate wakes up.
+
+DEBATE CONVERGENCE: All 3 agents (solver + 2 breakers) must say CONVERGED.
+If debate hits 50 rounds without convergence, task re-fires next cycle.
+Unconverged debates do NOT produce nodes.
+
+ALL MODELS: claude-opus-4-6. Hardcoded. Cannot be overridden by agents.
+
+---
+
 ## CHECKLIST: ARE WE BUILDING IT RIGHT?
 
 When reviewing progress, verify:
 
 - [ ] Agents are PERSISTENT sessions (not killed between tasks)
 - [ ] Started with personas (not architecture)
-- [ ] Used debate team for personas and use cases
+- [ ] Debate team used for personas and use cases
+- [ ] Debate CONVERGED (all 3 agreed) before phase marked done
 - [ ] Each persona has 10+ use cases
 - [ ] Each use case has a journey with error steps
 - [ ] Journeys reference services in [brackets]
 - [ ] Services EMERGED from journeys (not pre-planned)
 - [ ] Hierarchy GREW from services (not imposed top-down)
+- [ ] NO rigid gates — new nodes can be created anytime
+- [ ] Wake-up works — new persona triggers debate re-open
 - [ ] Tests REPLAY journeys
 - [ ] Test failures CREATE new nodes (self-healing)
-- [ ] Impact radius is isolated when things change
+- [ ] ALL models are Opus (no Sonnet anywhere)
 - [ ] Engine has NO domain knowledge (nodes are smart, engine is dumb)
 - [ ] File-copy snapshots (not git per cycle)
-- [ ] AST validation before importing node files
-- [ ] Dispatch IDs prevent stale signals
-- [ ] Mutable defaults use __init__ per-instance copies
+- [ ] Debate log shows rounds and convergence status

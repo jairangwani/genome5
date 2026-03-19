@@ -178,9 +178,11 @@ def converge(project_dir: str, agent_manager):
                                 for wf in workflow_nodes:
                                     if dtask.check == "initial-personas" or dtask.check == "verify-personas":
                                         wf.persona_debate_converged = True
-                                        # Write back to file
+                                        persona_count = len(genome.nodes_by_type("persona"))
+                                        wf.persona_count_at_convergence = persona_count
                                         if wf._source_file:
                                             _update_node_field(wf._source_file, "persona_debate_converged", "True")
+                                            _update_node_field(wf._source_file, "persona_count_at_convergence", str(persona_count))
                                     elif dtask.check and dtask.check.startswith("discover-usecases-"):
                                         persona_name = dtask.node_name
                                         if hasattr(wf, 'use_case_debates_converged'):
