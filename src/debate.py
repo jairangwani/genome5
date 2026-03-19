@@ -18,7 +18,7 @@ import subprocess
 import time
 
 
-MAX_ROUNDS = 12
+MAX_ROUNDS = 50
 
 
 def run_debate(project_dir: str, topic: str, context_files: list[str],
@@ -42,6 +42,17 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
     """
 
     debate_history = []
+    log_path = os.path.join(project_dir, "plan", "debate_log.md")
+    topic_short = topic[:60].replace('\n', ' ')
+
+    def _log(msg: str):
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+
+    _log(f"\n{'='*60}")
+    _log(f"## DEBATE: {topic_short}")
+    _log(f"Max rounds: {MAX_ROUNDS} | Model: {model}")
+    _log(f"{'='*60}\n")
 
     def call_agent(role: str, role_instructions: str, round_num: int) -> str:
         """One-shot agent call with debate history."""
@@ -128,8 +139,13 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
                 f"For each gap, hint at what's missing. Don't repeat previous points."
             )
 
-        print(f"  Debate round {round_num}: {role}...")
+        print(f"  Debate round {round_num}/{MAX_ROUNDS}: {role}...")
         response = call_agent(role, instructions, round_num)
+
+        # Log the round
+        converged_marker = " [CONVERGED]" if "CONVERGED" in response else ""
+        _log(f"### Round {round_num}: {role}{converged_marker}")
+        _log(f"{response[:500]}{'...' if len(response) > 500 else ''}\n")
 
         debate_history.append({
             "role": role,
@@ -151,11 +167,18 @@ def run_debate(project_dir: str, topic: str, context_files: list[str],
             )
 
             if all_converged and round_num >= 4:
-                print(f"  Debate converged after {round_num} rounds.")
+                print(f"  Debate CONVERGED after {round_num} rounds.")
+                _log(f"\n**RESULT: CONVERGED after {round_num}/{MAX_ROUNDS} rounds.**\n")
                 break
+    else:
+        print(f"  Debate hit MAX_ROUNDS ({MAX_ROUNDS}) without convergence.")
+        _log(f"\n**RESULT: MAX ROUNDS ({MAX_ROUNDS}) reached. Did NOT converge.**\n")
 
     # Return the solver's LAST response as the final answer
     solver_responses = [e["content"] for e in debate_history if e["role"] == "SOLVER"]
+    total_rounds = len(debate_history)
+    _log(f"Total rounds: {total_rounds} | Solver responses: {len(solver_responses)}\n")
+
     if solver_responses:
         return solver_responses[-1]
     return "Debate produced no solver output."
