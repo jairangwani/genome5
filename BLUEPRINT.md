@@ -19,9 +19,10 @@ A system where AI agents plan, build, test, and maintain ANY project. The engine
 5. **Debate team for exhaustive discovery** — 1 solver + 2 breakers, persistent sessions, must all CONVERGE
 6. **Open system, no rigid gates** — new personas/UCs/services anytime
 7. **Wake-up on change** — new persona appears → debate re-opens
-7. **Ripple effect through nodes** — edges + staleness propagate changes automatically
-8. **Always Opus 4.6** — hardcoded, cannot be overridden
-9. **Experience teaches** — test failures create new nodes, system self-heals
+8. **Ripple effect through nodes** — edges + staleness propagate changes automatically
+9. **Always Opus 4.6** — hardcoded, cannot be overridden
+10. **Experience teaches** — test failures create new nodes, system self-heals
+11. **All sessions persistent** — debate, fresh review, normal tasks. No one-shot text mode.
 
 ---
 
