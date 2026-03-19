@@ -23,7 +23,7 @@ MAX_ROUNDS = 50
 
 def run_debate(project_dir: str, topic: str, context_files: list[str],
                solver_instructions: str, breaker1_focus: str = "logical flaws",
-               breaker2_focus: str = "practical gaps", model: str = "claude-sonnet-4-6",
+               breaker2_focus: str = "practical gaps", model: str = "claude-opus-4-6",
                timeout: int = 300) -> str:
     """Run a 1+2 debate and return the solver's final output.
 

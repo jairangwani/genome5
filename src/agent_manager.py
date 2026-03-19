@@ -89,7 +89,7 @@ class AgentManager:
             return {"success": False, "error": "No agent node provided"}
 
         name = agent_node.name
-        model = getattr(agent_node, "model", "claude-sonnet-4-6")
+        model = getattr(agent_node, "model", "claude-opus-4-6")
         desc = getattr(agent_node, "description", "")
         prompt = self._build_prompt(task)
 
@@ -137,7 +137,7 @@ class AgentManager:
         if info and info.get("alive"):
             return info
 
-        model = getattr(agent_node, "model", "claude-sonnet-4-6")
+        model = getattr(agent_node, "model", "claude-opus-4-6")
         desc = getattr(agent_node, "description", "")
 
         env = {**os.environ}

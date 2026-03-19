@@ -159,7 +159,7 @@ def converge(project_dir: str, agent_manager):
                             topic=dtask.message,
                             context_files=dctx,
                             solver_instructions=dtask.suggestion or dtask.message,
-                            model=getattr(downer, "model", "claude-sonnet-4-6"),
+                            model=getattr(downer, "model", "claude-opus-4-6"),
                             timeout=config.get("agent_timeout", 600),
                         )
                         return dtask, downer, result
@@ -372,7 +372,7 @@ class HRAgent(Node):
         "Creates specialist agents. Assigns node ownership. "
         "Reads project context and builds the right team."
     )
-    model = "claude-sonnet-4-6"
+    model = "claude-opus-4-6"
     capabilities = ["team-management"]
     edges = {}
 

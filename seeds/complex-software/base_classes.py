@@ -102,7 +102,7 @@ class JourneyNode(Node):
 class AgentNode(Node):
     """An AI agent."""
     type = "agent"
-    model: str = "claude-sonnet-4-6"
+    model: str = "claude-opus-4-6"
     capabilities: list = []
 
     def __init__(self):
