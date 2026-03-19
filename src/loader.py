@@ -135,10 +135,16 @@ def _find_node_class(module) -> type | None:
 _genome5_installed = False
 
 def _ensure_genome5_importable():
-    """Make 'genome5' importable so nodes can do 'from genome5 import Node'."""
+    """Make 'genome5' importable so nodes can do 'from genome5 import Node'.
+    Always reinstalls to pick up any code changes."""
     global _genome5_installed
-    if _genome5_installed:
-        return
+
+    # Clear stale cached modules to pick up code changes
+    for mod_name in list(sys.modules.keys()):
+        if mod_name.startswith("genome5"):
+            del sys.modules[mod_name]
+
+    _genome5_installed = False
 
     from src import node as node_module
 
