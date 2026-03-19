@@ -128,50 +128,70 @@ def converge(project_dir: str, agent_manager):
 
                 print(f"  -> {owner.name}: {task.message[:80]}")
 
-                # Handle debate tasks (1 solver + 2 breakers)
+                # Handle debate tasks — collect all debate-eligible tasks and run in parallel
                 if task.debate:
                     from src.debate import run_debate
-                    print(f"  DEBATE MODE for: {task.message[:60]}")
-                    debate_result = run_debate(
-                        project_dir=project_dir,
-                        topic=task.message,
-                        context_files=context_files,
-                        solver_instructions=task.suggestion or task.message,
-                        model=getattr(owner, "model", "claude-sonnet-4-6"),
-                        timeout=config.get("agent_timeout", 600),
-                    )
-                    print(f"  Debate result: {len(debate_result)} chars")
+                    import concurrent.futures
 
-                    # If debate agents didn't create files directly,
-                    # pass the result to the persistent agent to create nodes
-                    debate_genome = load_genome(project_dir)
-                    debate_tasks = validate_genome(debate_genome)
-                    if len(debate_genome.nodes) == len(genome.nodes):
-                        # No new nodes created — pass debate result to agent
-                        print(f"  Debate produced text, not files. Passing to agent...")
-                        snapshot_mgr.snapshot()  # protect against regression
-                        followup = Task(
-                            f"The debate team produced this analysis. Create the "
-                            f"nodes described:\n\n{debate_result[:3000]}",
-                            task.node_name, phase=task.phase, priority=task.priority,
-                            suggestion=task.suggestion,
+                    # Collect ALL debate tasks for this dispatch (up to max_parallel)
+                    debate_batch = [(task, owner, context_files)]
+                    for other_task in eligible:
+                        if not other_task.debate or other_task is task:
+                            continue
+                        other_owner = _find_owner(other_task, genome)
+                        if not other_owner or other_owner.name in dispatched:
+                            continue
+                        other_context = []
+                        if hasattr(other_owner, "before_work"):
+                            other_context = [n._source_file for n in
+                                           other_owner.before_work({"node_name": other_task.node_name}, genome)
+                                           if n and n._source_file]
+                        debate_batch.append((other_task, other_owner, other_context))
+                        dispatched.add(other_owner.name)
+                        if len(debate_batch) >= max_parallel:
+                            break
+
+                    def _run_one_debate(args):
+                        dtask, downer, dctx = args
+                        print(f"  DEBATE: {dtask.node_name or dtask.message[:40]}...")
+                        result = run_debate(
+                            project_dir=project_dir,
+                            topic=dtask.message,
+                            context_files=dctx,
+                            solver_instructions=dtask.suggestion or dtask.message,
+                            model=getattr(downer, "model", "claude-sonnet-4-6"),
+                            timeout=config.get("agent_timeout", 600),
                         )
-                        agent_manager.assign_task({
-                            "issue": followup,
-                            "context_files": context_files,
-                            "regression_history": reg_history,
-                            "feedback": "",
-                            "agent_node": owner,
-                        })
-                        # Regression check on followup
-                        followup_genome, followup_issues = check(project_dir)
-                        regression = detect_regression(followup, list(issues), followup_issues)
-                        if regression:
-                            print(f"  REGRESSION from debate followup: {regression}")
-                            snapshot_mgr.restore()
-                            log_regression(followup_genome.plan_dir, followup, regression)
+                        return dtask, downer, result
 
-                    snapshot_mgr.checkpoint(f"genome5: debate on {task.node_name or 'project'}")
+                    print(f"  Running {len(debate_batch)} debates in parallel...")
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as pool:
+                        futures = [pool.submit(_run_one_debate, args) for args in debate_batch]
+                        for future in concurrent.futures.as_completed(futures):
+                            dtask, downer, debate_result = future.result()
+                            print(f"  Debate done for {dtask.node_name or '?'}: {len(debate_result)} chars")
+
+                            # Check if debate created files
+                            debate_genome = load_genome(project_dir)
+                            if len(debate_genome.nodes) == len(genome.nodes):
+                                print(f"  Debate text → passing to agent...")
+                                snapshot_mgr.snapshot()
+                                followup = Task(
+                                    f"The debate team produced this analysis. Create the "
+                                    f"nodes described:\n\n{debate_result[:3000]}",
+                                    dtask.node_name, phase=dtask.phase, priority=dtask.priority,
+                                    suggestion=dtask.suggestion,
+                                )
+                                agent_manager.assign_task({
+                                    "issue": followup,
+                                    "context_files": dctx,
+                                    "regression_history": reg_history,
+                                    "feedback": "",
+                                    "agent_node": downer,
+                                })
+
+                    snapshot_mgr.checkpoint(f"genome5: {len(debate_batch)} parallel debates")
                     continue
 
                 # Handle fresh_session tasks (new agent, not persistent)
