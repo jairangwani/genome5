@@ -1,7 +1,7 @@
 """Agent Guide — THE document every agent reads.
 
-This teaches agents how genome5 works through CONCRETE EXAMPLES.
-Examples > abstract rules. Copy the patterns you see here.
+Teaches agents how genome5 works through CONCRETE EXAMPLES.
+Explains the use-case-first flow and what the engine enforces.
 """
 from genome5 import Node
 
@@ -16,69 +16,81 @@ class AgentGuide(Node):
         """
 YOU ARE AN AI AGENT IN GENOME5.
 
-You have FREEDOM. Think deeply. Create comprehensively. Nobody micromanages you.
+You have FREEDOM. Think deeply. Create comprehensively. No micromanagement.
 
-=== WHAT IS GENOME5 ===
+=== THE FLOW (use-case-first) ===
 
-Everything is a Python node in plan/. Each node has:
-  - name, type, level, description (identity)
-  - edges (parent, owned_by, calls, depends_on)
-  - validate() (checks itself — returns Tasks when something is wrong)
-  - doc, decisions, knowledge (memory)
+PHASE 1: PERSONAS — WHO uses this system?
+  Create persona nodes. Exhaust ALL user types: primary users, operators,
+  admins, threat actors, automated agents, visitors, API consumers.
+  The engine will ask you "what did you miss?" with a FRESH agent.
+  Don't rush. This is the foundation.
 
-The engine loads ALL nodes, calls ALL validate(), routes tasks to owners.
-When all validate() return [] — project is CONVERGED.
+PHASE 2: USE CASES — WHAT can each persona do?
+  For EACH persona, create use case nodes: happy path, error recovery,
+  edge cases, abuse scenarios. 10-20 per persona.
+  The engine will re-check with a fresh agent.
+
+PHASE 3: JOURNEYS — HOW does each use case work?
+  Step-by-step with [brackets] referencing services:
+  "1. [Consumer] types description"
+  "2. [Gateway] receives request"
+  Include error paths. 10-25 steps.
+
+PHASE 4: SERVICES EMERGE — from journey [brackets]
+  Services you reference that don't exist → engine creates them.
+  You do NOT pre-plan services from the spec.
+  Services emerge from what journeys NEED.
+
+=== WHAT THE ENGINE ENFORCES (you can't bypass this) ===
+
+EXHAUSTION LIFECYCLE: For any node with expected_children:
+  1. You list expected_children → create them
+  2. Engine spawns a FRESH agent to re-read the spec
+     "What concepts are NOT covered by these children?"
+  3. If gaps found → more children added → cycle repeats
+  4. After verified → ANOTHER fresh agent reviews
+  5. Reviewer either approves or adds more
+
+You CANNOT skip this. The engine does it automatically.
+Setting children_verified=True triggers the reviewer.
+The reviewer can reset it if they find gaps.
+
+DEBATE TEAM: For persona/use-case discovery tasks marked debate=True:
+  - 1 SOLVER proposes answers
+  - 2 BREAKERS find flaws and gaps
+  - They go back and forth until converged
+  You don't control this — the engine runs it.
 
 === HOW TO CREATE A NODE ===
 
 from genome5 import Node, Task
 
 class MyService(Node):
-    name = "Gateway API Service"        # exact name — used for matching
-    type = "service"                     # any type you want
-    level = 2                            # parent.level + 1
-    description = "HTTP entry point — routes requests to Doorman"
+    name = "Gateway API Service"        # exact name
+    type = "service"
+    level = 2                           # parent.level + 1
+    description = "HTTP entry point"
 
-    spec_reference = "docs/PANDO-PLAN.md:## 8. Two-Tier Node Architecture"
+    spec_reference = "docs/PANDO-PLAN.md:## 8. Gateway"
 
-    expected_children = [                # exact names of children this node needs
+    expected_children = [               # exact child node names
         "Route Anonymous Build Request",
         "Handle Auth Failure",
-        "Handle Rate Limit Exceeded",
     ]
-    children_verified = False            # True after you've confirmed nothing missing
+    children_verified = False
+    children_reviewed = False
 
     edges = {
-        "parent": "Gateway Module",      # who is my parent (level - 1)
-        "owned_by": "Infrastructure Agent",  # who works on me
-        "calls": ["Doorman Service", "Content Safety Service"],
+        "parent": "Gateway Module",
+        "owned_by": "Infrastructure Agent",
+        "calls": ["Doorman Service"],
     }
 
-    files = ["src/gateway/api.ts"]       # source files (dev phase)
-
-    doc = "Gateway handles all HTTP requests. Entry point for the system."
-    decisions = ["Chose Express over Fastify — simpler"]
+    files = ["src/gateway/api.ts"]
+    doc = "Gateway handles all HTTP requests."
+    decisions = ["Express over Fastify — simpler"]
     knowledge = []
-
-    def validate(self, genome):
-        tasks = super().validate(genome)
-
-        # Check expected children exist
-        existing = {n.name for n in self.children(genome)}
-        for name in self.expected_children:
-            if name not in existing:
-                tasks.append(Task(
-                    f"Create use case: '{name}' (parent: '{self.name}', level: 3)",
-                    self.name, phase="planning",
-                ))
-
-        # Check source files exist (dev phase)
-        import os
-        for f in self.files:
-            if not os.path.exists(os.path.join(genome.project_dir, f)):
-                tasks.append(Task(f"Implement: {f}", self.name, phase="dev"))
-
-        return tasks
 
 === HOW TO CREATE A JOURNEY ===
 
@@ -86,7 +98,7 @@ class ConsumerBuildsApp(Node):
     name = "Consumer Builds App Journey"
     type = "journey"
     level = 4
-    description = "End-to-end flow: stranger gets a live app without signup"
+    description = "Stranger gets a live app without signup"
 
     edges = {
         "parent": "Build App Use Case",
@@ -105,24 +117,20 @@ class ConsumerBuildsApp(Node):
         "9. [Consumer] gets live URL",
         "",
         "ERROR PATHS:",
-        "E1. [Content Safety] blocks → show rephrasing suggestion",
-        "E2. [Build Service] crashes → [Recovery] resumes from checkpoint",
-        "E3. Browser closes → [Claim Token] allows return within 30 days",
+        "E1. [Content Safety] blocks → rephrasing suggestion",
+        "E2. [Build Service] crashes → [Recovery] resumes",
+        "E3. Browser closes → [Claim Token] allows return",
     ]
 
-    knowledge = [
-        "Things in [brackets] are services that MUST EXIST.",
-        "If a service doesn't exist, the engine creates a dangling edge task.",
-        "Error paths are critical — every journey needs them.",
-    ]
+Things in [brackets] MUST EXIST. If they don't, the engine creates them.
 
 === HOW TO CREATE A PERSONA ===
 
-class ConsumerPersona(Node):
+class Consumer(Node):
     name = "Consumer"
     type = "persona"
     level = 1
-    description = "Person who builds apps on Pando without technical knowledge"
+    description = "Builds apps by describing them in plain language"
 
     edges = {
         "parent": "Users Domain",
@@ -131,36 +139,28 @@ class ConsumerPersona(Node):
 
     properties = {
         "goals": [
-            "Build an app by describing it in plain language",
-            "Get a live URL in under 5 minutes",
+            "Build an app in under 5 minutes",
+            "Get a live URL without signup",
             "Edit and iterate on their app",
         ],
     }
 
 === KEY RULES ===
 
-1. HIERARCHY: Every node has a parent (except Level 0 domains).
-   Level must equal parent level + 1. Engine enforces this.
+1. ORDERING: Personas → Use Cases → Journeys → Services emerge.
+   Do NOT create services directly from the spec. They emerge.
 
-2. EXPECTED_CHILDREN: List exact node names. The engine checks
-   if children with those names exist. Names must match exactly.
+2. HIERARCHY: Every node has a parent. Level = parent.level + 1.
 
-3. JOURNEYS: Steps reference services in [brackets].
-   If the service doesn't exist, the engine detects a dangling edge
-   and creates a task to build it. The hierarchy GROWS from journeys.
+3. EXPECTED_CHILDREN: Exact node names. Engine checks existence.
 
-4. SPEC_REFERENCE: Use section headers, not line numbers.
-   "docs/PANDO-PLAN.md:## 8. Two-Tier Node Architecture"
+4. JOURNEYS: Steps reference services in [brackets].
+   Missing services → dangling edges → engine creates them.
 
-5. AFTER EVERY TASK:
-   - Update the node's knowledge
-   - REFLECT: should you update expected_children?
-   - Did you discover something that changes the hierarchy?
+5. SPEC_REFERENCE: Section headers, not line numbers.
 
-6. IMPORT: always 'from genome5 import Node, Task'
-   For seed types: 'from genome5.seeds import ServiceNode' (optional)
-   NEVER: 'from plan...' or 'import subprocess' in node files
+6. IMPORT: 'from genome5 import Node, Task'
 
-7. PYTHON: No leading zeros (0644 invalid). Use encoding="utf-8".
+7. PYTHON: No leading zeros. encoding="utf-8".
 """,
     ]

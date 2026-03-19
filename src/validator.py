@@ -39,6 +39,9 @@ def validate_genome(genome: Genome) -> list[Task]:
     # 5. Staleness (info-level, one level deep)
     tasks.extend(_check_staleness(genome))
 
+    # 6. Exhaustion lifecycle (engine-enforced, can't be bypassed)
+    tasks.extend(_check_exhaustion(genome))
+
     return prioritize(tasks)
 
 
@@ -98,4 +101,88 @@ def _check_staleness(genome: Genome) -> list[Task]:
                 node_name=node.name, phase="planning", priority=5, severity="info",
                 check="staleness",
             ))
+    return tasks
+
+
+def _check_exhaustion(genome: Genome) -> list[Task]:
+    """Engine-enforced exhaustion lifecycle. Can't be bypassed by agents.
+
+    For any node with expected_children:
+    - State 2: children missing → task to create them (handled by node validate())
+    - State 3: all children exist + NOT verified → FRESH agent re-reads spec
+    - State 4: verified + NOT reviewed → FRESH reviewer checks completeness
+
+    The fresh_session flag tells the engine to spawn a NEW agent, not reuse
+    the persistent one. This ensures different LLM sampling paths.
+    """
+    tasks = []
+
+    for node in genome.all_nodes():
+        # Only applies to nodes with expected_children
+        if not node.expected_children:
+            continue
+
+        # Check if all expected children exist
+        existing = {n.name for n in node.children(genome)}
+        missing = [name for name in node.expected_children if name not in existing]
+
+        if missing:
+            # State 2: children missing — node's own validate() handles this
+            continue
+
+        # All children exist
+        if not node.children_verified:
+            # STATE 3: Re-read spec with FRESH agent
+            # Show child DESCRIPTIONS (not names) so agent evaluates
+            # conceptual coverage, not string confirmation.
+            child_descriptions = "; ".join(
+                f"{c.name}: {c.description[:60]}"
+                for c in node.children(genome)
+            )
+            spec_ref = node.spec_reference or "the project spec"
+
+            tasks.append(Task(
+                f"EXHAUSTION CHECK for '{node.name}': All {len(node.expected_children)} "
+                f"children exist. Re-read {spec_ref} (with ±20 lines of surrounding context). "
+                f"Current children cover: [{child_descriptions}]. "
+                f"What concepts in the spec are NOT covered by these children? "
+                f"If you find gaps, add the missing names to expected_children. "
+                f"If genuinely nothing is missing, set children_verified = True.",
+                node_name=node.name, phase="planning", priority=2,
+                check=f"exhaustion-state3:{node.name[:30]}",
+                fresh_session=True,  # MUST be a fresh agent session
+            ))
+
+        elif not node.children_reviewed:
+            # STATE 4: Reviewer with FRESH agent
+            child_list = ", ".join(
+                f"{c.name} ({c.description[:40]})"
+                for c in node.children(genome)
+            )
+            # Calculate sibling comparison for context
+            parent = node.parent_node(genome)
+            sibling_avg = 0
+            if parent:
+                siblings = parent.children(genome)
+                sibling_counts = [len(s.expected_children) for s in siblings if s.expected_children]
+                if sibling_counts:
+                    sibling_avg = sum(sibling_counts) / len(sibling_counts)
+
+            comparison = ""
+            if sibling_avg > 0:
+                comparison = (f" Sibling nodes average {sibling_avg:.0f} children. "
+                            f"This node has {len(node.expected_children)}. ")
+
+            tasks.append(Task(
+                f"REVIEWER for '{node.name}': {len(node.expected_children)} children: "
+                f"[{child_list}].{comparison}"
+                f"Read the spec section and these children's descriptions. "
+                f"Are ALL concepts from the spec covered? Is anything missing? "
+                f"If you find gaps, add names to expected_children and set "
+                f"children_verified = False. If complete, set children_reviewed = True.",
+                node_name=node.name, phase="review", priority=3,
+                check=f"exhaustion-state4:{node.name[:30]}",
+                fresh_session=True,  # MUST be a different fresh agent
+            ))
+
     return tasks

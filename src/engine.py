@@ -127,6 +127,43 @@ def converge(project_dir: str, agent_manager):
                 reg_history = load_regression_history(genome.plan_dir)
 
                 print(f"  -> {owner.name}: {task.message[:80]}")
+
+                # Handle debate tasks (1 solver + 2 breakers)
+                if task.debate:
+                    from src.debate import run_debate
+                    print(f"  DEBATE MODE for: {task.message[:60]}")
+                    debate_result = run_debate(
+                        project_dir=project_dir,
+                        topic=task.message,
+                        context_files=context_files,
+                        solver_instructions=task.suggestion or task.message,
+                        model=getattr(owner, "model", "claude-sonnet-4-6"),
+                        timeout=config.get("agent_timeout", 600),
+                    )
+                    # Debate ran synchronously — no pending handle
+                    print(f"  Debate result: {len(debate_result)} chars")
+                    snapshot_mgr.checkpoint(f"genome5: debate on {task.node_name or 'project'}")
+                    continue
+
+                # Handle fresh_session tasks (new agent, not persistent)
+                if task.fresh_session:
+                    print(f"  FRESH SESSION for exhaustion/review")
+                    result = agent_manager.assign_task_fresh({
+                        "issue": task,
+                        "context_files": context_files,
+                        "regression_history": reg_history,
+                        "feedback": last_feedback,
+                        "agent_node": owner,
+                    })
+                    # Fresh session ran synchronously
+                    if result.get("success"):
+                        print(f"  Fresh session done.")
+                    else:
+                        print(f"  Fresh session failed: {result.get('error', '?')}")
+                    snapshot_mgr.checkpoint(f"genome5: fresh-{owner.name}")
+                    continue
+
+                # Normal persistent session task
                 handle = agent_manager.assign_task_async({
                     "issue": task,
                     "context_files": context_files,

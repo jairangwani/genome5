@@ -77,6 +77,42 @@ class AgentManager:
         except queue.Empty:
             return None, None
 
+    def assign_task_fresh(self, task: dict) -> dict:
+        """Run task in a FRESH agent session — new process, no prior context.
+
+        Used for exhaustion State 3 (re-read spec) and State 4 (reviewer).
+        The fresh session ensures different LLM sampling paths.
+        Process is killed after the task completes.
+        """
+        agent_node = task.get("agent_node")
+        if not agent_node:
+            return {"success": False, "error": "No agent node provided"}
+
+        name = agent_node.name
+        model = getattr(agent_node, "model", "claude-sonnet-4-6")
+        desc = getattr(agent_node, "description", "")
+        prompt = self._build_prompt(task)
+
+        # One-shot: spawn, send, receive, kill
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        env.pop("CLAUDECODE", None)
+        env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+
+        try:
+            result = subprocess.run(
+                ["claude", "--output-format", "text", "--model", model],
+                input=prompt, capture_output=True, text=True,
+                timeout=self.task_timeout, cwd=self.project_dir,
+                env=env, encoding="utf-8", errors="replace",
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return {"success": True, "text": result.stdout.strip()}
+            return {"success": False, "error": result.stderr[:200] if result.stderr else "no output"}
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": f"Fresh session timed out after {self.task_timeout}s"}
+        except Exception as e:
+            return {"success": False, "error": str(e)[:200]}
+
     def kill(self, name: str = None):
         targets = [name] if name else list(self.agents.keys())
         for n in targets:

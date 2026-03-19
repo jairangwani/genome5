@@ -19,7 +19,8 @@ class Task:
     def __init__(self, message: str, node_name: str = "",
                  phase: str = "planning", priority: int = 5,
                  severity: str = "error", check: str = "",
-                 suggestion: str = "", context: str = ""):
+                 suggestion: str = "", context: str = "",
+                 fresh_session: bool = False, debate: bool = False):
         self.message = message
         self.node_name = node_name
         self.phase = phase
@@ -27,7 +28,9 @@ class Task:
         self.severity = severity
         self.check = check
         self.suggestion = suggestion
-        self.context = context  # for cycle detection: same check + same context = cycle
+        self.context = context      # for cycle detection
+        self.fresh_session = fresh_session  # engine spawns NEW agent, not persistent
+        self.debate = debate        # engine runs 1+2 debate instead of single agent
 
     def __repr__(self):
         return f"Task(P{self.priority}/{self.severity}: {self.message[:60]})"
@@ -51,6 +54,7 @@ class Node:
     spec_reference: str = ""
     expected_children: list = []
     children_verified: bool = False
+    children_reviewed: bool = False  # True after reviewer approves
 
     properties: dict = {}
     edges: dict = {}

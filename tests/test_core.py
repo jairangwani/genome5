@@ -149,6 +149,82 @@ def test_loader_tracks_errors(tmp_path):
     assert len(g.load_errors) >= 1
 
 
+def test_exhaustion_state3_fires():
+    """When all expected_children exist and children_verified=False, State 3 fires."""
+    g = Genome(".")
+    parent = Node(); parent.name = "Parent"; parent.level = 0
+    parent.expected_children = ["Child A", "Child B"]
+    parent.children_verified = False
+    parent.description = "test"
+    g.add(parent)
+
+    child_a = Node(); child_a.name = "Child A"; child_a.level = 1
+    child_a.edges = {"parent": "Parent"}; child_a.description = "a"; g.add(child_a)
+    child_b = Node(); child_b.name = "Child B"; child_b.level = 1
+    child_b.edges = {"parent": "Parent"}; child_b.description = "b"; g.add(child_b)
+
+    g.build_index()
+    from src.validator import _check_exhaustion
+    tasks = _check_exhaustion(g)
+    assert len(tasks) >= 1
+    assert any("EXHAUSTION CHECK" in t.message for t in tasks)
+    assert any(t.fresh_session for t in tasks)
+
+
+def test_exhaustion_state4_fires():
+    """When children_verified=True but not reviewed, State 4 fires."""
+    g = Genome(".")
+    parent = Node(); parent.name = "Parent"; parent.level = 0
+    parent.expected_children = ["Child"]
+    parent.children_verified = True
+    parent.children_reviewed = False
+    parent.description = "test"
+    g.add(parent)
+
+    child = Node(); child.name = "Child"; child.level = 1
+    child.edges = {"parent": "Parent"}; child.description = "c"; g.add(child)
+
+    g.build_index()
+    from src.validator import _check_exhaustion
+    tasks = _check_exhaustion(g)
+    assert len(tasks) >= 1
+    assert any("REVIEWER" in t.message for t in tasks)
+    assert any(t.fresh_session for t in tasks)
+
+
+def test_exhaustion_complete_no_tasks():
+    """When verified AND reviewed, no exhaustion tasks fire."""
+    g = Genome(".")
+    parent = Node(); parent.name = "Parent"; parent.level = 0
+    parent.expected_children = ["Child"]
+    parent.children_verified = True
+    parent.children_reviewed = True
+    parent.description = "test"
+    g.add(parent)
+
+    child = Node(); child.name = "Child"; child.level = 1
+    child.edges = {"parent": "Parent"}; child.description = "c"; g.add(child)
+
+    g.build_index()
+    from src.validator import _check_exhaustion
+    tasks = _check_exhaustion(g)
+    assert len(tasks) == 0
+
+
+def test_task_debate_flag():
+    t = Task("Discover personas", debate=True)
+    assert t.debate is True
+    t2 = Task("Fix bug")
+    assert t2.debate is False
+
+
+def test_task_fresh_session_flag():
+    t = Task("Re-read spec", fresh_session=True)
+    assert t.fresh_session is True
+    t2 = Task("Normal task")
+    assert t2.fresh_session is False
+
+
 def test_loader_prunes_knowledge(tmp_path):
     plan = tmp_path / "plan"
     plan.mkdir()
