@@ -80,6 +80,12 @@ class PlanningWorkflow(Node):
                     f"'Personas complete. {len(personas)} personas created.'",
                     self.name, phase="planning", priority=1,
                     check="phase1-exhaustion",
+                    suggestion=(
+                        f"Existing personas: {', '.join(persona_names)}. "
+                        f"Read the full spec. WHO is missing from this list? "
+                        f"Create .py files for any missing personas."
+                    ),
+                    debate=True,  # ALL debates must converge — all 3 agree
                 ))
             return tasks  # GATE: nothing else until personas complete
 
