@@ -47,7 +47,7 @@ class PlanningWorkflow(Node):
 
         if not personas_complete:
             if not personas:
-                # No personas at all — first task
+                # No personas at all — first task. USE DEBATE TEAM.
                 tasks.append(Task(
                     f"PHASE 1: Discover ALL personas. Read {reference}. "
                     f"WHO uses this system? List every type of user, operator, "
@@ -56,7 +56,15 @@ class PlanningWorkflow(Node):
                     f"doc field to 'Personas complete. [count] personas created.'",
                     self.name, phase="planning", priority=1,
                     check="phase1-personas",
-                    suggestion="Use debate team: ask yourself 'who else?' repeatedly",
+                    suggestion=(
+                        f"Create persona nodes in plan/. Each persona is a .py file "
+                        f"with name, type='persona', level=1, description, goals, "
+                        f"edges={{parent: 'Users Domain', owned_by: 'Planning Agent'}}. "
+                        f"Think exhaustively: primary users, secondary users, operators, "
+                        f"administrators, threat actors, automated agents, API consumers, "
+                        f"visitors, moderators, governance participants."
+                    ),
+                    debate=True,  # 1 solver + 2 breakers for exhaustive coverage
                 ))
             else:
                 # Personas exist but not marked complete — exhaustion check
@@ -101,6 +109,12 @@ class PlanningWorkflow(Node):
                         f"Aim for 10-20 use cases per persona.",
                         persona.name, phase="planning", priority=2,
                         check=f"phase2-usecases-{persona.name[:20]}",
+                        suggestion=(
+                            f"Create use case nodes in plan/. Each is a .py file with "
+                            f"name, type='use_case', level=2, description, "
+                            f"edges={{parent: '{persona.name}', owned_by: 'Planning Agent'}}."
+                        ),
+                        debate=True,  # exhaustive use-case discovery
                     ))
 
             if not tasks:

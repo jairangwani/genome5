@@ -140,8 +140,29 @@ def converge(project_dir: str, agent_manager):
                         model=getattr(owner, "model", "claude-sonnet-4-6"),
                         timeout=config.get("agent_timeout", 600),
                     )
-                    # Debate ran synchronously — no pending handle
                     print(f"  Debate result: {len(debate_result)} chars")
+
+                    # If debate agents didn't create files directly,
+                    # pass the result to the persistent agent to create nodes
+                    debate_genome = load_genome(project_dir)
+                    debate_tasks = validate_genome(debate_genome)
+                    if len(debate_genome.nodes) == len(genome.nodes):
+                        # No new nodes created — pass debate result to agent
+                        print(f"  Debate produced text, not files. Passing to agent...")
+                        followup = Task(
+                            f"The debate team produced this analysis. Create the "
+                            f"nodes described:\n\n{debate_result[:3000]}",
+                            task.node_name, phase=task.phase, priority=task.priority,
+                            suggestion=task.suggestion,
+                        )
+                        agent_manager.assign_task({
+                            "issue": followup,
+                            "context_files": context_files,
+                            "regression_history": reg_history,
+                            "feedback": "",
+                            "agent_node": owner,
+                        })
+
                     snapshot_mgr.checkpoint(f"genome5: debate on {task.node_name or 'project'}")
                     continue
 
