@@ -92,7 +92,7 @@ class AgentManager:
             return {"success": False, "error": "No agent node provided"}
 
         name = agent_node.name
-        model = getattr(agent_node, "model", DEFAULT_MODEL)
+        model = DEFAULT_MODEL  # ALWAYS Opus. Agent node model field is ignored.
         desc = getattr(agent_node, "description", "")
         prompt = self._build_prompt(task)
 
@@ -140,7 +140,7 @@ class AgentManager:
         if info and info.get("alive"):
             return info
 
-        model = getattr(agent_node, "model", DEFAULT_MODEL)
+        model = DEFAULT_MODEL  # ALWAYS Opus. Agent node model field is ignored.
         desc = getattr(agent_node, "description", "")
 
         env = {**os.environ}
